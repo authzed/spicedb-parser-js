@@ -1,0 +1,40 @@
+---
+# yamllint disable rule:line-length
+name: "Publish to NPM"
+on: # yamllint disable-line rule:truthy
+  release:
+    types:
+      - "published"
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: "pnpm/action-setup@v4"
+        with:
+          run_install: false
+      - name: "Install Node.js"
+        uses: "actions/setup-node@v6"
+        with:
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
+      - name: "Install dependencies"
+        run: "pnpm install"
+      # Set the version in package.json to match the tag
+      - name: Write release version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo Version: $VERSION
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      # NOTE: the flag is necessary because otherwise `npm version <version>` attempts to
+      # cut a git tag with that version, which fails because the git user isn't configured.
+      - name: "Update version in package.json"
+        run: "pnpm version ${VERSION} --no-git-tag-version"
+      - name: "Publish"
+        run: "pnpm publish --provenance --access public --no-git-checks"

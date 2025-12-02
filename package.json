@@ -1,0 +1,82 @@
+{
+  "name": "@authzed/spicedb-parser-js",
+  "author": "authzed",
+  "version": "1.0.0-rc1",
+  "type": "module",
+  "description": "common parsing logic for the playground and vscode extension",
+  "keywords": [
+    "authorization",
+    "authzed",
+    "fine-grained-authorization",
+    "open-source",
+    "permissions",
+    "spicedb",
+    "zanzibar"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/authzed/spicedb-parser-js.git"
+  },
+  "license": "Apache-2.0",
+  "private": false,
+  "scripts": {
+    "attw": "attw",
+    "build": "tsdown",
+    "format": "prettier -w .",
+    "format:check": "prettier -c .",
+    "lint": "eslint",
+    "prebuild": "pnpm run type",
+    "prepack": "pnpm run publint",
+    "prepublish": "pnpm build",
+    "publint": "publint",
+    "test": "vitest",
+    "type": "tsc"
+  },
+  "tsdown": {
+    "entry": [
+      "src/index.ts"
+    ],
+    "sourcemap": true,
+    "format": [
+      "esm",
+      "cjs"
+    ],
+    "dts": true
+  },
+  "dependencies": {
+    "@types/parsimmon": "^1.10.9",
+    "parsimmon": "^1.18.1"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/parser": "^8.48.1",
+    "eslint": "^9.39.1",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import-x": "^4.16.1",
+    "eslint-plugin-vitest": "^0.5.4",
+    "globals": "^16.5.0",
+    "jiti": "^2.6.1",
+    "prettier": "^3.7.4",
+    "publint": "^0.3.15",
+    "tsdown": "^0.17.0-beta.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.1",
+    "vitest": "^4.0.15"
+  },
+  "packageManager": "pnpm@10.24.0"
+}

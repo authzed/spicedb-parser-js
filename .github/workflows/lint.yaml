@@ -1,0 +1,45 @@
+---
+name: "Lint"
+permissions:
+  contents: "read"
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "*"
+jobs:
+  lint:
+    name: "Lint"
+    runs-on: "depot-ubuntu-24.04-small"
+    steps:
+      - uses: "actions/checkout@v5"
+      - uses: "pnpm/action-setup@v4"
+        with:
+          run_install: false
+      - name: "Install Node.js"
+        uses: "actions/setup-node@v6"
+        with:
+          cache: "pnpm"
+      - name: "Install dependencies"
+        run: "pnpm install"
+      - name: "Run prettier"
+        run: "pnpm run format:check"
+      - name: "Run lint"
+        run: "pnpm lint"
+      # NOTE: build step does typechecking
+      - name: "Run build"
+        run: "pnpm build"
+      - name: "Run ATTW"
+        run: "pnpm run attw --pack"
+      - name: "Run publint"
+        run: "pnpm run publint"
+
+  conventional-commits:
+    name: "Lint Commit Messages"
+    runs-on: "depot-ubuntu-24.04-small"
+    if: "github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || github.event.action == 'edited')"
+    steps:
+      - uses: "actions/checkout@v5"
+      - uses: "webiny/action-conventional-commits@v1.3.0"

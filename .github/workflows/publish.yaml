@@ -27,7 +27,7 @@ jobs:
       # Ensure npm 11.5.1 or later is installed;
       # this is required for publishing using OIDC authn
       - name: "Update npm"
-        run: "npm install -g npm@"
+        run: "npm install -g npm@latest"
       - name: "Install dependencies"
         run: "pnpm install"
       # Set the version in package.json to match the tag

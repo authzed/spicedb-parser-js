@@ -112,17 +112,17 @@ definition foo {}
         definition bar {}`;
       const parsed = parseSchema(schema);
 
-      expect(parsed?.definitions.length).toEqual(2);
-      const caveatOne = parsed?.definitions[0];
-      assert(caveatOne);
-      assert(caveatOne.kind === "caveatDef");
+      expect(parsed?.definitions).toHaveLength(2);
+      const definitionOne = parsed?.definitions[0];
+      assert(definitionOne);
+      assert(definitionOne.kind === "objectDef");
 
-      expect(caveatOne.name).toEqual("foo");
+      expect(definitionOne.name).toEqual("foo");
 
-      const caveatTwo = parsed.definitions[1];
-      assert(caveatTwo);
-      assert(caveatTwo.kind === "caveatDef");
-      expect(caveatTwo.name).toEqual("bar");
+      const definitionTwo = parsed.definitions[1];
+      assert(definitionTwo);
+      assert(definitionTwo.kind === "objectDef");
+      expect(definitionTwo.name).toEqual("bar");
     });
 
     it("parses relation with expiration", () => {
@@ -433,10 +433,10 @@ definition foo {}
 
       const definition = parsed?.definitions[0];
       assert(definition);
-      assert("relations" in definition);
+      assert(definition.kind === "objectDef")
       expect(definition.name).toEqual("foo");
-      expect(definition.relations.length).toEqual(0);
-      expect(definition.permissions.length).toEqual(2);
+      expect(definition.relations).toHaveLength(0);
+      expect(definition.permissions).toHaveLength(2);
 
       const first = definition.permissions[0];
       assert(first);
@@ -455,6 +455,31 @@ definition foo {}
       expect(secondExpr.relationName).toEqual("secondrel");
     });
   });
+
+  describe("partial syntax", () => {
+    it("parses a basic partial", () => {
+    const schema = `partial thing {
+relation user: user
+permission view = user
+}`
+    const parsed = parseSchema(schema)
+    expect(parsed?.definitions).toHaveLength(1)
+      const partial = parsed?.definitions[0];
+      assert(partial);
+    assert(partial.kind === "partial")
+    expect(partial.name).toEqual("thing")
+    expect(partial.relations).toHaveLength(1)
+    expect(partial.permissions).toHaveLength(1)
+
+    const relation = partial.relations[0]
+    assert(relation)
+    expect(relation.name).toEqual("user")
+
+    const permission = partial.permissions[0]
+    assert(permission)
+    expect(permission.name).toEqual("view")
+    })
+  })
 
   describe("full schemas", () => {
     it("full", () => {
@@ -671,15 +696,12 @@ definition foo {}
         `;
 
       const parsed = parseSchema(schema);
-      expect(parsed?.definitions.length).toEqual(2);
-      const definitionOne = parsed?.definitions[0];
-      assert(definitionOne);
-      assert(definitionOne.kind === "objectDef");
-      expect(definitionOne.permissions.length).toEqual(1);
-      const definitionTwo = parsed.definitions[1];
-      assert(definitionTwo);
-      assert(definitionTwo.kind === "objectDef");
-      expect(definitionTwo.relations.length).toEqual(1);
+      expect(parsed?.definitions).toHaveLength(2);
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+      expect(definition.permissions).toHaveLength(1);
+      expect(definition.relations).toHaveLength(1);
     });
 
     it("parses wildcard relation correctly with synthetic semicolon and comment after", () => {

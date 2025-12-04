@@ -1,4 +1,4 @@
-import type { Parser, Success } from "parsimmon";
+import type { Parser } from "parsimmon";
 import {
   formatError,
   index,
@@ -67,6 +67,7 @@ export const parseSchema = (value: string): ParsedSchema | undefined => {
 export type TopLevelDefinition =
   | ParsedObjectDefinition
   | ParsedCaveatDefinition
+  | ParsedPartialDefinition
   | ParsedUseFlag;
 
 /**
@@ -86,7 +87,7 @@ export function parse(input: string): ParseResult {
       ? {
           kind: "schema",
           stringValue: input,
-          definitions: (result as Success<Array<TopLevelDefinition>>).value,
+          definitions: result.value,
         }
       : undefined,
   };
@@ -189,9 +190,7 @@ export function mapParsedSchema(
     return;
   }
 
-  schema.definitions.forEach((def: TopLevelDefinition) => {
-    mapParseNodes(def, mapper);
-  });
+  schema.definitions.forEach(mapParseNodes(mapper));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -207,6 +206,14 @@ export interface ParsedSchema {
 export interface ParsedUseFlag {
   kind: "use";
   featureName: string;
+  range: TextRange;
+}
+
+export interface ParsedPartialDefinition {
+  kind: "partial";
+  name: string;
+  relations: Array<ParsedRelation>;
+  permissions: Array<ParsedPermission>;
   range: TextRange;
 }
 
@@ -337,6 +344,7 @@ export type ParsedNode =
   | ParsedCaveatParameterTypeRef
   | ParsedCaveatExpression
   | ParsedObjectDefinition
+  | ParsedPartialDefinition
   | ParsedRelation
   | ParsedPermission
   | ParsedExpression
@@ -408,7 +416,7 @@ const andExpiration = seqMap(
   },
 );
 
-const withCaveat = seqMap(
+const withCaveat: Parser<WithCaveat> = seqMap(
   index,
   seq(lexeme(string("with")), path, andExpiration.atMost(1)),
   index,
@@ -422,7 +430,7 @@ const withCaveat = seqMap(
   },
 );
 
-const withExpiration = seqMap(
+const withExpiration: Parser<WithExpiration> = seqMap(
   index,
   seq(lexeme(string("with")), lexeme(string("expiration"))),
   index,
@@ -434,7 +442,7 @@ const withExpiration = seqMap(
   },
 );
 
-const typeRef = seqMap(
+const typeRef: Parser<TypeRef> = seqMap(
   index,
   seq(
     seq(path, colon, lexeme(string("*"))).or(
@@ -445,18 +453,21 @@ const typeRef = seqMap(
   index,
   function (startIndex, data, endIndex) {
     const isWildcard = data[0][2] === "*";
+    const withCaveat = data[1].find(trait => trait.kind === "withcaveat")
+    const withExpiration = data[1].find(trait => trait.kind === "withexpiration")
     return {
       kind: "typeref",
       path: data[0][0],
       relationName: isWildcard ? undefined : data[0][1][0],
       wildcard: isWildcard,
-      withCaveat: data[1].length > 0 ? data[1][0] : undefined,
+      withCaveat, 
+      withExpiration,
       range: { startIndex: startIndex, endIndex: endIndex },
     };
   },
 );
 
-const typeExpr = lazy(() => {
+const typeExpr: Parser<TypeExpr> = lazy(() => {
   return seqMap(
     index,
     seq(typeRef, pipedTypeExpr.atLeast(0)),
@@ -549,6 +560,7 @@ const parensExpr = lazy(() =>
     .or(relationReference),
 );
 
+// TODO: make this explicit by unfolding
 function BINARY_LEFT(
   operatorsParser: Parser<string>,
   nextParser: Parser<ParsedBinaryExpression>,
@@ -619,7 +631,7 @@ const tableParser: Parser<ParsedBinaryExpression> = table.reduce(
 const expr = tableParser.trim(whitespace);
 
 // Definitions members.
-const permission = seqMap(
+const permission: Parser<ParsedPermission> = seqMap(
   index,
   seq(
     lexeme(string("permission")),
@@ -637,7 +649,7 @@ const permission = seqMap(
   },
 );
 
-const relation = seqMap(
+const relation: Parser<ParsedRelation> = seqMap(
   index,
   seq(
     lexeme(string("relation")),
@@ -655,10 +667,10 @@ const relation = seqMap(
   },
 );
 
-const relationOrPermission = relation.or(permission);
+const relationOrPermission: Parser<RelationOrPermission> = relation.or(permission);
 
 // Use flags
-const useFlag = seqMap(
+const useFlag: Parser<ParsedUseFlag> = seqMap(
   index,
   seq(lexeme(string("use")), identifier, terminator.atMost(1)),
   index,
@@ -671,8 +683,16 @@ const useFlag = seqMap(
   },
 );
 
+function isRelation(relOrPerm: RelationOrPermission): relOrPerm is ParsedRelation {
+  return "allowedTypes" in relOrPerm
+}
+
+function isPermission(relOrPerm: RelationOrPermission): relOrPerm is ParsedPermission {
+  return "allowedTypes" in relOrPerm
+}
+
 // Object Definitions.
-const definition = seqMap(
+const definition: Parser<ParsedObjectDefinition> = seqMap(
   index,
   seq(
     lexeme(string("definition")),
@@ -681,23 +701,41 @@ const definition = seqMap(
   ),
   index,
   function (startIndex, data, endIndex) {
-    const rp = data[2] as Array<RelationOrPermission>;
+    const rp = data[2];
     return {
       kind: "objectDef",
       name: data[1],
-      relations: rp.filter(
-        (relOrPerm: RelationOrPermission) => "allowedTypes" in relOrPerm,
-      ),
-      permissions: rp.filter(
-        (relOrPerm: RelationOrPermission) => !("allowedTypes" in relOrPerm),
-      ),
+      relations: rp.filter(isRelation),
+      permissions: rp.filter(isPermission),
+      range: { startIndex: startIndex, endIndex: endIndex },
+    };
+  },
+);
+
+// Partial Definitions.
+// NOTE: these are parsed the same as definitions.
+const partial: Parser<ParsedPartialDefinition> = seqMap(
+  index,
+  seq(
+    lexeme(string("partial")),
+    path,
+    lbrace.then(relationOrPermission.atLeast(0)).skip(rbrace),
+  ),
+  index,
+  function (startIndex, data, endIndex) {
+    const rp = data[2];
+    return {
+      kind: "partial",
+      name: data[1],
+      relations: rp.filter(isRelation),
+      permissions: rp.filter(isPermission),
       range: { startIndex: startIndex, endIndex: endIndex },
     };
   },
 );
 
 // Caveats.
-const caveatParameterTypeExpr: Parser<unknown> = lazy(() => {
+const caveatParameterTypeExpr: Parser<ParsedCaveatParameterTypeRef> = lazy(() => {
   return seqMap(
     index,
     seq(
@@ -716,7 +754,7 @@ const caveatParameterTypeExpr: Parser<unknown> = lazy(() => {
   );
 });
 
-const caveatParameter = lazy(() => {
+const caveatParameter: Parser<ParsedCaveatParameter> = lazy(() => {
   return seqMap(
     index,
     seq(identifier, caveatParameterTypeExpr),
@@ -750,7 +788,7 @@ const caveatParameters = lazy(() => {
 
 const commaedParameter = comma.then(caveatParameter);
 
-const caveatExpression = seqMap(
+const caveatExpression: Parser<ParsedCaveatExpression> = seqMap(
   index,
   seq(celExpression),
   index,
@@ -762,7 +800,7 @@ const caveatExpression = seqMap(
   },
 );
 
-const caveat = seqMap(
+const caveat: Parser<ParsedCaveatDefinition> = seqMap(
   index,
   seq(
     lexeme(string("caveat")),
@@ -784,7 +822,7 @@ const caveat = seqMap(
   },
 );
 
-const topLevel = definition.or(caveat).or(useFlag);
+const topLevel = definition.or(partial).or(caveat).or(useFlag);
 
 function findReferenceNodeInDef(
   def: ParsedObjectDefinition,
@@ -864,10 +902,11 @@ function findReferenceNodeInRelation(
   return found.length > 0 ? found[0] : undefined;
 }
 
-function mapParseNodes(
-  node: ParsedNode | undefined,
+const mapParseNodes = (
   mapper: (node: ParsedNode) => void,
-) {
+  ) => (
+  node: ParsedNode | undefined,
+) => {
   if (node === undefined) {
     return;
   }
@@ -876,33 +915,30 @@ function mapParseNodes(
 
   switch (node.kind) {
     case "objectDef":
-      node.relations.forEach((rel: ParsedRelation) => {
-        mapParseNodes(rel, mapper);
-      });
-      node.permissions.forEach((perm: ParsedPermission) => {
-        mapParseNodes(perm, mapper);
-      });
+      node.relations.forEach(mapParseNodes(mapper));
+      node.permissions.forEach(mapParseNodes(mapper));
+      break;
+
+    case "partial":
+      node.relations.forEach(mapParseNodes(mapper));
+      node.permissions.forEach(mapParseNodes(mapper));
       break;
 
     case "caveatDef":
-      node.parameters.forEach((param: ParsedCaveatParameter) => {
-        mapParseNodes(param, mapper);
-      });
-      mapParseNodes(node.expression, mapper);
+      node.parameters.forEach(mapParseNodes(mapper));
+      mapParseNodes(mapper)(node.expression);
       break;
 
     case "caveatParameter":
-      mapParseNodes(node.type, mapper);
+      mapParseNodes(mapper)(node.type);
       break;
 
     case "caveatParameterTypeExpr":
-      node.generics.forEach((n) => {
-        mapParseNodes(n, mapper);
-      });
+      node.generics.forEach(mapParseNodes(mapper));
       break;
 
     case "relation":
-      mapParseNodes(node.allowedTypes, mapper);
+      mapParseNodes(mapper)(node.allowedTypes);
       break;
 
     case "permission":
@@ -910,13 +946,11 @@ function mapParseNodes(
       break;
 
     case "typeexpr":
-      node.types.forEach((n) => {
-        mapParseNodes(n, mapper);
-      });
+      node.types.forEach(mapParseNodes(mapper));
       break;
 
     case "typeref":
-      mapParseNodes(node.withCaveat, mapper);
+      mapParseNodes(mapper)(node.withCaveat);
       break;
   }
 }

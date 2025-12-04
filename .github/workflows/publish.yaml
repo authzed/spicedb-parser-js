@@ -37,4 +37,7 @@ jobs:
       - name: "Update version in package.json"
         run: "pnpm version ${VERSION} --no-git-tag-version"
       - name: "Publish"
-        run: "pnpm publish --provenance --access public"
+        # --provenance identifies the build as having come from github actions
+        # --access public makes it publicly visible
+        # --no-git-checks tells pnpm not to worry about the fact that we've changed the version
+        run: "pnpm publish --provenance --access public --no-git-checks"

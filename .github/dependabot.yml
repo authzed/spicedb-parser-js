@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: "npm" # See documentation for possible values
+    directories:
+      - "/" # Location of package manifests
+      - "js-dist"
+    schedule:
+      interval: "monthly"
+    versioning-strategy: increase
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"

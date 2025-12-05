@@ -35,7 +35,7 @@ export type TypeRefResolution = {
    * refs, so make sure to check the expression to see if it has a relation reference.
    */
   permission: ParsedPermission | undefined;
-}
+};
 
 /**
  * ExpressionResolution is the resolution of a reference in a permission expression.
@@ -49,7 +49,7 @@ export type ResolvedTypeReference = {
   kind: "type";
   reference: TypeRef;
   referencedTypeAndRelation: TypeRefResolution | undefined;
-}
+};
 
 /**
  * ResolvedExprReference is a relation reference expression found in the schema, with resolution attempted.
@@ -58,7 +58,7 @@ export type ResolvedExprReference = {
   kind: "expression";
   reference: ParsedRelationRefExpression;
   resolvedRelationOrPermission: ExpressionResolution | undefined;
-}
+};
 
 /**
  * ResolvedReference is a found and resolution performed type reference or expression.
@@ -187,7 +187,7 @@ export class Resolver {
     def: TopLevelDefinition,
   ): ExpressionResolution | undefined {
     this.populate();
-    if (def.kind === "use") {
+    if (def.kind === "use" || def.kind === "import") {
       return undefined;
     }
 
@@ -255,6 +255,7 @@ export class ResolvedDefinition {
     name: "",
     relations: [],
     permissions: [],
+    partialReferences: [],
     range: emptyRange,
   };
 

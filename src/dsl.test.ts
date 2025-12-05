@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSchema } from "./dsl";
+import { parseSchema, stringLiteral } from "./dsl";
 
 // Takes an expression as an argument and throws if that assertion fails.
 // This primarily exists to provide typescript narrowing in a statement,
@@ -21,7 +21,7 @@ describe("parsing", () => {
       const schema = `use expiration`;
       const parsed = parseSchema(schema);
 
-      expect(parsed?.definitions.length).toEqual(1);
+      expect(parsed?.definitions).toHaveLength(1);
       const useFlag = parsed?.definitions[0];
       assert(useFlag);
       assert(useFlag.kind === "use");
@@ -36,6 +36,45 @@ definition foo {}
       const parsed = parseSchema(schema);
 
       expect(parsed?.definitions.length).toEqual(2);
+    });
+  });
+
+  describe("imports", () => {
+    it("parses basic import", () => {
+      const schema = `import "foo/bar/baz.zed"`;
+      const parsed = parseSchema(schema);
+
+      expect(parsed?.definitions).toHaveLength(1);
+      const imPort = parsed?.definitions[0];
+      assert(imPort);
+      assert(imPort.kind === "import");
+      expect(imPort.path).toEqual("foo/bar/baz.zed");
+    });
+    it("parses import and definition", () => {
+      const schema = `import "foo/bar/baz.zed"
+definition user {}
+`;
+      const parsed = parseSchema(schema);
+
+      expect(parsed?.definitions).toHaveLength(2);
+      const imPort = parsed?.definitions[0];
+      assert(imPort);
+      assert(imPort.kind === "import");
+      expect(imPort.path).toEqual("foo/bar/baz.zed");
+
+      const definition = parsed.definitions[1];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+    });
+    it("rejects too many things on line", () => {
+      const schema = `import "foo/bar/baz.zed" yolo`;
+      const parsed = parseSchema(schema);
+      expect(parsed).toBeUndefined();
+    });
+    it("rejects malformed import string", () => {
+      const schema = `import "foo/bar/baz.zed"yolo`;
+      const parsed = parseSchema(schema);
+      expect(parsed).toBeUndefined();
     });
   });
 
@@ -433,7 +472,7 @@ definition foo {}
 
       const definition = parsed?.definitions[0];
       assert(definition);
-      assert(definition.kind === "objectDef")
+      assert(definition.kind === "objectDef");
       expect(definition.name).toEqual("foo");
       expect(definition.relations).toHaveLength(0);
       expect(definition.permissions).toHaveLength(2);
@@ -458,42 +497,68 @@ definition foo {}
 
   describe("partial syntax", () => {
     it("parses a basic partial", () => {
-    const schema = `partial thing {
+      const schema = `partial thing {
 relation user: user
 permission view = user
-}`
-    const parsed = parseSchema(schema)
-    expect(parsed?.definitions).toHaveLength(1)
+}`;
+      const parsed = parseSchema(schema);
+      expect(parsed?.definitions).toHaveLength(1);
       const partial = parsed?.definitions[0];
       assert(partial);
-    assert(partial.kind === "partial")
-    expect(partial.name).toEqual("thing")
-    expect(partial.relations).toHaveLength(1)
-    expect(partial.permissions).toHaveLength(1)
+      assert(partial.kind === "partial");
+      expect(partial.name).toEqual("thing");
+      expect(partial.relations).toHaveLength(1);
+      expect(partial.permissions).toHaveLength(1);
 
-    const relation = partial.relations[0]
-    assert(relation)
-    expect(relation.name).toEqual("user")
+      const relation = partial.relations[0];
+      assert(relation);
+      expect(relation.name).toEqual("user");
 
-    const permission = partial.permissions[0]
-    assert(permission)
-    expect(permission.name).toEqual("view")
-    })
+      const permission = partial.permissions[0];
+      assert(permission);
+      expect(permission.name).toEqual("view");
+    });
     it("parses a basic partial reference", () => {
-    const schema = `definition thing {
+      const schema = `definition thing {
 ...some_partial
-}`
-    const parsed = parseSchema(schema)
-    expect(parsed?.definitions).toHaveLength(1)
+}`;
+      const parsed = parseSchema(schema);
+      expect(parsed?.definitions).toHaveLength(1);
       const definition = parsed?.definitions[0];
       assert(definition);
-    assert(definition.kind === "objectDef")
-      expect(definition.partialReferences).toHaveLength(1)
-      assert(definition.partialReferences[0])
-      expect(definition.partialReferences[0].name).toEqual("some_partial")
-    })
-    // TODO: more tests here
-  })
+      assert(definition.kind === "objectDef");
+      expect(definition.partialReferences).toHaveLength(1);
+      assert(definition.partialReferences[0]);
+      expect(definition.partialReferences[0].name).toEqual("some_partial");
+    });
+    it("fails on a basic partial reference with extra stuff", () => {
+      const schema = `definition thing {
+...some_partial yolo
+}`;
+      const parsed = parseSchema(schema);
+      expect(parsed).toBeUndefined();
+    });
+    it("fails on a basic partial reference with disallowed chars", () => {
+      const schema = `definition thing {
+...some'schtuff
+}`;
+      const parsed = parseSchema(schema);
+      expect(parsed).toBeUndefined();
+    });
+    it("passes on a partial with a partial reference inside", () => {
+      const schema = `partial thing {
+...some_partial
+}`;
+      const parsed = parseSchema(schema);
+      expect(parsed?.definitions).toHaveLength(1);
+      const partial = parsed?.definitions[0];
+      assert(partial);
+      assert(partial.kind === "partial");
+      expect(partial.partialReferences).toHaveLength(1);
+      assert(partial.partialReferences[0]);
+      expect(partial.partialReferences[0].name).toEqual("some_partial");
+    });
+  });
 
   describe("full schemas", () => {
     it("full", () => {
@@ -839,5 +904,36 @@ describe("parsing fails when", () => {
       "caveat foo (someParam string, anotherParam int) { someParam == 42` }";
     const parsed = parseSchema(schema);
     expect(parsed).toBeUndefined();
+  });
+});
+
+describe("utils", () => {
+  describe("stringLiteral", () => {
+    it("consumes a normal string literal", () => {
+      const parsed = stringLiteral.parse("'/foo/bar/baz.zed'");
+      expect(parsed.status).toBeTruthy();
+      assert(parsed.status);
+      expect(parsed.value).toEqual("/foo/bar/baz.zed");
+    });
+    it("consumes a quoted singlequote", () => {
+      const parsed = stringLiteral.parse(`"'"`);
+      expect(parsed.status).toBeTruthy();
+      assert(parsed.status);
+      expect(parsed.value).toEqual("'");
+    });
+    it("consumes a quoted doublequote", () => {
+      const parsed = stringLiteral.parse(`'"'`);
+      expect(parsed.status).toBeTruthy();
+      assert(parsed.status);
+      expect(parsed.value).toEqual('"');
+    });
+    it("disallows backticks as delimiter", () => {
+      const parsed = stringLiteral.parse("`something in backticks`");
+      expect(parsed.status).toBeFalsy();
+    });
+    it("fails when contents continue", () => {
+      const parsed = stringLiteral.parse("'something'thatcontinues");
+      expect(parsed.status).toBeFalsy();
+    });
   });
 });

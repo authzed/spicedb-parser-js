@@ -9,6 +9,7 @@ import {
   seqMap,
   newline,
   seq,
+  takeWhile,
 } from "parsimmon";
 import { celExpression } from "./cel";
 
@@ -25,7 +26,7 @@ export type ParseResult = {
    * schema is the fully parsed schema, if no error.
    */
   schema: ParsedSchema | undefined;
-}
+};
 
 /**
  * ParseError represents an error raised by the parser.
@@ -45,7 +46,7 @@ export type ParseError = {
    * expected is the set of expected regular expression(s) at the index.
    */
   expected: Array<string>;
-}
+};
 
 /**
  * parseSchema parses a DSL schema, returning relevant semantic information
@@ -67,6 +68,7 @@ export type TopLevelDefinition =
   | ParsedObjectDefinition
   | ParsedCaveatDefinition
   | ParsedPartialDefinition
+  | ParsedImportExpression
   | ParsedUseFlag;
 
 /**
@@ -151,7 +153,7 @@ export function flatMapExpression<T>(
 export type ReferenceNode = {
   node: ParsedRelationRefExpression | TypeRef | undefined;
   def: TopLevelDefinition;
-}
+};
 
 /**
  * findReferenceNode walks the parse tree to find the node matching the given line number and
@@ -199,14 +201,21 @@ export function mapParsedSchema(
 export type ParsedSchema = {
   kind: "schema";
   stringValue: string;
+  // TODO: it may make sense to split uses and imports out.
   definitions: Array<TopLevelDefinition>;
-}
+};
 
 export type ParsedUseFlag = {
   kind: "use";
   featureName: string;
   range: TextRange;
-}
+};
+
+export type ParsedImportExpression = {
+  kind: "import";
+  path: string;
+  range: TextRange;
+};
 
 export type ParsedCaveatDefinition = {
   kind: "caveatDef";
@@ -214,26 +223,26 @@ export type ParsedCaveatDefinition = {
   parameters: Array<ParsedCaveatParameter>;
   expression: ParsedCaveatExpression;
   range: TextRange;
-}
+};
 
 export type ParsedCaveatExpression = {
   kind: "caveatExpr";
   range: TextRange;
-}
+};
 
 export type ParsedCaveatParameter = {
   kind: "caveatParameter";
   name: string;
   type: ParsedCaveatParameterTypeRef;
   range: TextRange;
-}
+};
 
 export type ParsedCaveatParameterTypeRef = {
   kind: "caveatParameterTypeExpr";
   name: string;
   generics: Array<ParsedCaveatParameterTypeRef>;
   range: TextRange;
-}
+};
 
 export type ParsedObjectDefinition = {
   kind: "objectDef";
@@ -242,7 +251,7 @@ export type ParsedObjectDefinition = {
   permissions: Array<ParsedPermission>;
   partialReferences: Array<PartialReference>;
   range: TextRange;
-}
+};
 
 export type ParsedPartialDefinition = {
   kind: "partial";
@@ -251,20 +260,20 @@ export type ParsedPartialDefinition = {
   permissions: Array<ParsedPermission>;
   partialReferences: Array<PartialReference>;
   range: TextRange;
-}
+};
 
 type PartialReference = {
   kind: "partialreference";
   name: string;
   range: TextRange;
-}
+};
 
 export type ParsedRelation = {
   kind: "relation";
   name: string;
   allowedTypes: TypeExpr;
   range: TextRange;
-}
+};
 
 export type ParsedExpression =
   | ParsedBinaryExpression
@@ -278,7 +287,7 @@ export type ParsedArrowExpression = {
   sourceRelation: ParsedRelationRefExpression;
   targetRelationOrPermission: string;
   range: TextRange;
-}
+};
 
 export type ParsedNamedArrowExpression = {
   kind: "namedarrow";
@@ -286,19 +295,19 @@ export type ParsedNamedArrowExpression = {
   functionName: string;
   targetRelationOrPermission: string;
   range: TextRange;
-}
+};
 
 export type ParsedRelationRefExpression = {
   kind: "relationref";
   relationName: string;
   range: TextRange;
-}
+};
 
 export type ParsedNilExpression = {
   kind: "nil";
   isNil: true;
   range: TextRange;
-}
+};
 
 export type ParsedBinaryExpression = {
   kind: "binary";
@@ -306,16 +315,19 @@ export type ParsedBinaryExpression = {
   left: ParsedExpression;
   right: ParsedExpression;
   range: TextRange;
-}
+};
 
 export type ParsedPermission = {
   kind: "permission";
   name: string;
   expr: ParsedExpression;
   range: TextRange;
-}
+};
 
-export type DefinitionMember = ParsedRelation | ParsedPermission | PartialReference;
+export type DefinitionMember =
+  | ParsedRelation
+  | ParsedPermission
+  | PartialReference;
 
 export type TypeRef = {
   kind: "typeref";
@@ -325,27 +337,28 @@ export type TypeRef = {
   withCaveat: WithCaveat | undefined;
   withExpiration: WithExpiration | undefined;
   range: TextRange;
-}
+};
 
 export type WithExpiration = {
   kind: "withexpiration";
   range: TextRange;
-}
+};
 
 export type WithCaveat = {
   kind: "withcaveat";
   path: string;
   range: TextRange;
-}
+};
 
 export type TypeExpr = {
   kind: "typeexpr";
   types: Array<TypeRef>;
   range: TextRange;
-}
+};
 
 export type ParsedNode =
   | ParsedUseFlag
+  | ParsedImportExpression
   | ParsedCaveatDefinition
   | ParsedCaveatParameter
   | ParsedCaveatParameterTypeRef
@@ -363,12 +376,12 @@ export type Index = {
   offset: number;
   line: number;
   column: number;
-}
+};
 
 export type TextRange = {
   startIndex: Index;
   endIndex: Index;
-}
+};
 
 export type ExprWalker<T> = (expr: ParsedExpression) => T | undefined;
 
@@ -391,10 +404,10 @@ const identifier = lexeme(regex(/[a-zA-Z_][0-9a-zA-Z_+]*/));
 const path = lexeme(
   regex(/([a-zA-Z_][0-9a-zA-Z_+-]*\/)*[a-zA-Z_][0-9a-zA-Z_+-]*/),
 );
-const colon = lexeme(regex(/:/));
-const equal = lexeme(regex(/=/));
-const semicolon = lexeme(regex(/;/));
-const pipe = lexeme(regex(/\|/));
+const colon = lexeme(string(":"));
+const equal = lexeme(string("="));
+const semicolon = lexeme(string(";"));
+const pipe = lexeme(string("|"));
 
 const lbrace = lexeme(string("{"));
 const rbrace = lexeme(string("}"));
@@ -409,6 +422,15 @@ const dot = lexeme(string("."));
 const ellipsis = lexeme(string("..."));
 
 const terminator = newline.or(semicolon);
+
+// Take a single or a doublequote,
+// consume while the next character isn't that first delimiter,
+// then skip that last delimiter
+export const stringLiteral = string("'")
+  .or(string('"'))
+  .chain((delimiter) =>
+    takeWhile((c) => c !== delimiter).skip(string(delimiter)),
+  );
 
 // Type reference and expression.
 
@@ -461,14 +483,16 @@ const typeRef: Parser<TypeRef> = seqMap(
   index,
   function (startIndex, data, endIndex) {
     const isWildcard = data[0][2] === "*";
-    const withCaveat = data[1].find(trait => trait.kind === "withcaveat")
-    const withExpiration = data[1].find(trait => trait.kind === "withexpiration")
+    const withCaveat = data[1].find((trait) => trait.kind === "withcaveat");
+    const withExpiration = data[1].find(
+      (trait) => trait.kind === "withexpiration",
+    );
     return {
       kind: "typeref",
       path: data[0][0],
       relationName: isWildcard ? undefined : data[0][1][0],
       wildcard: isWildcard,
-      withCaveat, 
+      withCaveat,
       withExpiration,
       range: { startIndex: startIndex, endIndex: endIndex },
     };
@@ -568,7 +592,6 @@ const parensExpr = lazy(() =>
     .or(relationReference),
 );
 
-// TODO: make this explicit by unfolding
 function BINARY_LEFT(
   operatorsParser: Parser<OperatorType>,
   nextParser: Parser<ParsedExpression>,
@@ -576,37 +599,25 @@ function BINARY_LEFT(
   return seqMap(
     nextParser,
     seq(operatorsParser, nextParser).many(),
-    (
-      first,
-      rest,
-    ) => {
-      return rest.reduce(
-        (
-          acc,
-          ch,
-        ): ParsedBinaryExpression => {
-          const [operator, another] = ch;
-          return {
-            kind: "binary",
-            // NOTE: this as is necessary because the table below where
-            // these parsers are defined defines them statically, but
-            // typescript doesn't know that they're limited to this union.
-            operator,
-            left: acc,
-            right: another,
-            range: {
-              startIndex: acc.range.startIndex,
-              endIndex: another.range.endIndex,
-            },
-          };
-        },
-        first,
-      );
+    (first, rest) => {
+      return rest.reduce((acc, ch): ParsedBinaryExpression => {
+        const [operator, another] = ch;
+        return {
+          kind: "binary",
+          operator,
+          left: acc,
+          right: another,
+          range: {
+            startIndex: acc.range.startIndex,
+            endIndex: another.range.endIndex,
+          },
+        };
+      }, first);
     },
   );
 }
 
-type OperatorType = "union" | "intersection" | "exclusion"
+type OperatorType = "union" | "intersection" | "exclusion";
 
 function operator(operation: OperatorType, symbol: string) {
   return string(symbol).trim(optWhitespace).result(operation);
@@ -664,43 +675,61 @@ const relation: Parser<ParsedRelation> = seqMap(
 
 const partialReference: Parser<PartialReference> = seqMap(
   index,
-  ellipsis.then(identifier).skip(terminator.atMost(1)),
+  seq(ellipsis, identifier, terminator.atMost(1)),
   index,
-  function (startIndex, name, endIndex) {
+  function (startIndex, [_, name, __], endIndex) {
     return {
       kind: "partialreference",
       name,
       range: { startIndex, endIndex },
-    }
-  }
-)
+    };
+  },
+);
 
-const definitionMember: Parser<DefinitionMember> = relation.or(permission).or(partialReference);
+const definitionMember: Parser<DefinitionMember> = relation
+  .or(permission)
+  .or(partialReference);
 
 // Use flags
 const useFlag: Parser<ParsedUseFlag> = seqMap(
   index,
   seq(lexeme(string("use")), identifier, terminator.atMost(1)),
   index,
-  function (startIndex, data, endIndex) {
+  function (startIndex, [_, featureName, __], endIndex) {
     return {
       kind: "use",
-      featureName: data[1],
-      range: { startIndex: startIndex, endIndex: endIndex },
+      featureName,
+      range: { startIndex, endIndex },
+    };
+  },
+);
+
+// Import expressions
+const importExpression: Parser<ParsedImportExpression> = seqMap(
+  index,
+  seq(lexeme(string("import")), stringLiteral, terminator.atMost(1)),
+  index,
+  function (startIndex, [_, path, __], endIndex) {
+    return {
+      kind: "import",
+      path,
+      range: { startIndex, endIndex },
     };
   },
 );
 
 function isRelation(member: DefinitionMember): member is ParsedRelation {
-  return member.kind === "relation"
+  return member.kind === "relation";
 }
 
 function isPermission(member: DefinitionMember): member is ParsedPermission {
-  return member.kind === "permission"
+  return member.kind === "permission";
 }
 
-function isPartialReference(member: DefinitionMember): member is PartialReference {
-  return member.kind === "partialreference"
+function isPartialReference(
+  member: DefinitionMember,
+): member is PartialReference {
+  return member.kind === "partialreference";
 }
 
 // Object Definitions.
@@ -750,24 +779,26 @@ const partial: Parser<ParsedPartialDefinition> = seqMap(
 );
 
 // Caveats.
-const caveatParameterTypeExpr: Parser<ParsedCaveatParameterTypeRef> = lazy(() => {
-  return seqMap(
-    index,
-    seq(
-      identifier,
-      lcaret.then(caveatParameterTypeExpr).skip(rcaret).atMost(1),
-    ),
-    index,
-    function (startIndex, data, endIndex) {
-      return {
-        kind: "caveatParameterTypeExpr",
-        name: data[0],
-        generics: data[1],
-        range: { startIndex: startIndex, endIndex: endIndex },
-      };
-    },
-  );
-});
+const caveatParameterTypeExpr: Parser<ParsedCaveatParameterTypeRef> = lazy(
+  () => {
+    return seqMap(
+      index,
+      seq(
+        identifier,
+        lcaret.then(caveatParameterTypeExpr).skip(rcaret).atMost(1),
+      ),
+      index,
+      function (startIndex, data, endIndex) {
+        return {
+          kind: "caveatParameterTypeExpr",
+          name: data[0],
+          generics: data[1],
+          range: { startIndex: startIndex, endIndex: endIndex },
+        };
+      },
+    );
+  },
+);
 
 const caveatParameter: Parser<ParsedCaveatParameter> = lazy(() => {
   return seqMap(
@@ -837,7 +868,11 @@ const caveat: Parser<ParsedCaveatDefinition> = seqMap(
   },
 );
 
-const topLevel = definition.or(partial).or(caveat).or(useFlag);
+const topLevel = definition
+  .or(partial)
+  .or(caveat)
+  .or(useFlag)
+  .or(importExpression);
 
 function findReferenceNodeInDef(
   def: ParsedObjectDefinition,
@@ -917,58 +952,55 @@ function findReferenceNodeInRelation(
   return found.length > 0 ? found[0] : undefined;
 }
 
-const mapParseNodes = (
-  mapper: (node: ParsedNode) => void,
-  ) => (
-  node: ParsedNode | undefined,
-) => {
-  if (node === undefined) {
-    return;
-  }
+const mapParseNodes =
+  (mapper: (node: ParsedNode) => void) => (node: ParsedNode | undefined) => {
+    if (node === undefined) {
+      return;
+    }
 
-  mapper(node);
+    mapper(node);
 
-  switch (node.kind) {
-    case "objectDef":
-      node.relations.forEach(mapParseNodes(mapper));
-      node.permissions.forEach(mapParseNodes(mapper));
-      break;
+    switch (node.kind) {
+      case "objectDef":
+        node.relations.forEach(mapParseNodes(mapper));
+        node.permissions.forEach(mapParseNodes(mapper));
+        break;
 
-    case "partial":
-      node.relations.forEach(mapParseNodes(mapper));
-      node.permissions.forEach(mapParseNodes(mapper));
-      break;
+      case "partial":
+        node.relations.forEach(mapParseNodes(mapper));
+        node.permissions.forEach(mapParseNodes(mapper));
+        break;
 
-    case "caveatDef":
-      node.parameters.forEach(mapParseNodes(mapper));
-      mapParseNodes(mapper)(node.expression);
-      break;
+      case "caveatDef":
+        node.parameters.forEach(mapParseNodes(mapper));
+        mapParseNodes(mapper)(node.expression);
+        break;
 
-    case "caveatParameter":
-      mapParseNodes(mapper)(node.type);
-      break;
+      case "caveatParameter":
+        mapParseNodes(mapper)(node.type);
+        break;
 
-    case "caveatParameterTypeExpr":
-      node.generics.forEach(mapParseNodes(mapper));
-      break;
+      case "caveatParameterTypeExpr":
+        node.generics.forEach(mapParseNodes(mapper));
+        break;
 
-    case "relation":
-      mapParseNodes(mapper)(node.allowedTypes);
-      break;
+      case "relation":
+        mapParseNodes(mapper)(node.allowedTypes);
+        break;
 
-    case "permission":
-      flatMapExpression(node.expr, mapper);
-      break;
+      case "permission":
+        flatMapExpression(node.expr, mapper);
+        break;
 
-    case "typeexpr":
-      node.types.forEach(mapParseNodes(mapper));
-      break;
+      case "typeexpr":
+        node.types.forEach(mapParseNodes(mapper));
+        break;
 
-    case "typeref":
-      mapParseNodes(mapper)(node.withCaveat);
-      break;
-  }
-}
+      case "typeref":
+        mapParseNodes(mapper)(node.withCaveat);
+        break;
+    }
+  };
 
 function rangeContains(
   withRange: { range: TextRange },

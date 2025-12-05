@@ -9,14 +9,13 @@ import {
   seqMap,
   newline,
   seq,
-  alt,
 } from "parsimmon";
 import { celExpression } from "./cel";
 
 /**
  * ParseResult is the result of a direct parse.
  */
-export interface ParseResult {
+export type ParseResult = {
   /**
    * error is the parsing error found, if any.
    */
@@ -209,14 +208,6 @@ export interface ParsedUseFlag {
   range: TextRange;
 }
 
-export interface ParsedPartialDefinition {
-  kind: "partial";
-  name: string;
-  relations: Array<ParsedRelation>;
-  permissions: Array<ParsedPermission>;
-  range: TextRange;
-}
-
 export interface ParsedCaveatDefinition {
   kind: "caveatDef";
   name: string;
@@ -249,6 +240,22 @@ export interface ParsedObjectDefinition {
   name: string;
   relations: Array<ParsedRelation>;
   permissions: Array<ParsedPermission>;
+  partialReferences: Array<PartialReference>;
+  range: TextRange;
+}
+
+export interface ParsedPartialDefinition {
+  kind: "partial";
+  name: string;
+  relations: Array<ParsedRelation>;
+  permissions: Array<ParsedPermission>;
+  partialReferences: Array<PartialReference>;
+  range: TextRange;
+}
+
+interface PartialReference {
+  kind: "partialreference";
+  name: string;
   range: TextRange;
 }
 
@@ -308,7 +315,7 @@ export interface ParsedPermission {
   range: TextRange;
 }
 
-export type RelationOrPermission = ParsedRelation | ParsedPermission;
+export type DefinitionMember = ParsedRelation | ParsedPermission | PartialReference;
 
 export interface TypeRef {
   kind: "typeref";
@@ -399,6 +406,7 @@ const arrow = lexeme(string("->"));
 const hash = lexeme(string("#"));
 const comma = lexeme(string(","));
 const dot = lexeme(string("."));
+const ellipsis = lexeme(string("..."));
 
 const terminator = newline.or(semicolon);
 
@@ -487,7 +495,7 @@ const pipedTypeExpr = pipe.then(typeRef);
 
 // Permission expression.
 // Based on: https://github.com/jneen/parsimmon/blob/93648e20f40c5c0335ac6506b39b0ca58b87b1d9/examples/math.js#L29
-const relationReference = lazy(() => {
+const relationReference: Parser<ParsedRelationRefExpression> = lazy(() => {
   return seqMap(
     index,
     seq(identifier),
@@ -502,7 +510,7 @@ const relationReference = lazy(() => {
   );
 });
 
-const arrowExpr = lazy(() => {
+const arrowExpr: Parser<ParsedArrowExpression> = lazy(() => {
   return seqMap(
     index,
     seq(relationReference, arrow, identifier),
@@ -518,7 +526,7 @@ const arrowExpr = lazy(() => {
   );
 });
 
-const namedArrowExpr = lazy(() => {
+const namedArrowExpr: Parser<ParsedNamedArrowExpression> = lazy(() => {
   return seqMap(
     index,
     seq(relationReference, dot, identifier, lparen, identifier, rparen),
@@ -535,7 +543,7 @@ const namedArrowExpr = lazy(() => {
   );
 });
 
-const nilExpr = lazy(() => {
+const nilExpr: Parser<ParsedNilExpression> = lazy(() => {
   return seqMap(
     index,
     string("nil"),
@@ -562,28 +570,28 @@ const parensExpr = lazy(() =>
 
 // TODO: make this explicit by unfolding
 function BINARY_LEFT(
-  operatorsParser: Parser<string>,
-  nextParser: Parser<ParsedBinaryExpression>,
+  operatorsParser: Parser<OperatorType>,
+  nextParser: Parser<ParsedExpression>,
 ) {
   return seqMap(
     nextParser,
     seq(operatorsParser, nextParser).many(),
     (
-      first: ParsedBinaryExpression,
-      rest: Array<[string, ParsedBinaryExpression]>,
+      first,
+      rest,
     ) => {
       return rest.reduce(
         (
-          acc: ParsedBinaryExpression,
-          ch: [string, ParsedBinaryExpression],
+          acc,
+          ch,
         ): ParsedBinaryExpression => {
-          const [op, another] = ch;
+          const [operator, another] = ch;
           return {
             kind: "binary",
             // NOTE: this as is necessary because the table below where
             // these parsers are defined defines them statically, but
             // typescript doesn't know that they're limited to this union.
-            operator: op as "union" | "intersection" | "exclusion",
+            operator,
             left: acc,
             right: another,
             range: {
@@ -598,34 +606,21 @@ function BINARY_LEFT(
   );
 }
 
-// TODO: ensure this is right.
-function operators(ops: Record<string, string>) {
-  const ps = Object.entries(ops)
-    .sort(([firstKey], [secondKey]) => firstKey.localeCompare(secondKey))
-    .map(([key, value]) => string(value).trim(optWhitespace).result(key));
-  return alt(...ps);
+type OperatorType = "union" | "intersection" | "exclusion"
+
+function operator(operation: OperatorType, symbol: string) {
+  return string(symbol).trim(optWhitespace).result(operation);
 }
 
-const table: Array<{
-  type: typeof BINARY_LEFT;
-  ops: Parser<string>;
-}> = [
-  { type: BINARY_LEFT, ops: operators({ union: "+" }) },
-  { type: BINARY_LEFT, ops: operators({ intersection: "&" }) },
-  { type: BINARY_LEFT, ops: operators({ exclusion: "-" }) },
-];
+const table = [
+  { type: BINARY_LEFT, ops: operator("union", "+") },
+  { type: BINARY_LEFT, ops: operator("intersection", "&") },
+  { type: BINARY_LEFT, ops: operator("exclusion", "-") },
+] as const;
 
-const tableParser: Parser<ParsedBinaryExpression> = table.reduce(
-  (
-    acc: Parser<ParsedBinaryExpression>,
-    level: (typeof table)[0],
-  ): Parser<ParsedBinaryExpression> => level.type(level.ops, acc),
-  // TODO: there's probably a better way to type this.
-  // BINARY_LEFT returns a Parser<ParsedBinaryExpression>, and the types
-  // are compatible as seen in the parsing tests passing, but we have to
-  // cast here because there isn't a broader type that works well
-  // in this context.
-  parensExpr as unknown as Parser<ParsedBinaryExpression>,
+const tableParser: Parser<ParsedExpression> = table.reduce(
+  (acc, level) => level.type(level.ops, acc),
+  parensExpr,
 );
 
 const expr = tableParser.trim(whitespace);
@@ -657,17 +652,30 @@ const relation: Parser<ParsedRelation> = seqMap(
     colon.then(typeExpr).skip(terminator.atMost(1)),
   ),
   index,
-  function (startIndex, data, endIndex) {
+  function (startIndex, [_, name, allowedTypes], endIndex) {
     return {
       kind: "relation",
-      name: data[1],
-      allowedTypes: data[2],
-      range: { startIndex: startIndex, endIndex: endIndex },
+      name,
+      allowedTypes,
+      range: { startIndex, endIndex },
     };
   },
 );
 
-const relationOrPermission: Parser<RelationOrPermission> = relation.or(permission);
+const partialReference: Parser<PartialReference> = seqMap(
+  index,
+  ellipsis.then(identifier).skip(terminator.atMost(1)),
+  index,
+  function (startIndex, name, endIndex) {
+    return {
+      kind: "partialreference",
+      name,
+      range: { startIndex, endIndex },
+    }
+  }
+)
+
+const definitionMember: Parser<DefinitionMember> = relation.or(permission).or(partialReference);
 
 // Use flags
 const useFlag: Parser<ParsedUseFlag> = seqMap(
@@ -683,12 +691,16 @@ const useFlag: Parser<ParsedUseFlag> = seqMap(
   },
 );
 
-function isRelation(relOrPerm: RelationOrPermission): relOrPerm is ParsedRelation {
-  return "allowedTypes" in relOrPerm
+function isRelation(member: DefinitionMember): member is ParsedRelation {
+  return member.kind === "relation"
 }
 
-function isPermission(relOrPerm: RelationOrPermission): relOrPerm is ParsedPermission {
-  return "allowedTypes" in relOrPerm
+function isPermission(member: DefinitionMember): member is ParsedPermission {
+  return member.kind === "permission"
+}
+
+function isPartialReference(member: DefinitionMember): member is PartialReference {
+  return member.kind === "partialreference"
 }
 
 // Object Definitions.
@@ -697,16 +709,17 @@ const definition: Parser<ParsedObjectDefinition> = seqMap(
   seq(
     lexeme(string("definition")),
     path,
-    lbrace.then(relationOrPermission.atLeast(0)).skip(rbrace),
+    lbrace.then(definitionMember.atLeast(0)).skip(rbrace),
   ),
   index,
   function (startIndex, data, endIndex) {
-    const rp = data[2];
+    const members = data[2];
     return {
       kind: "objectDef",
       name: data[1],
-      relations: rp.filter(isRelation),
-      permissions: rp.filter(isPermission),
+      relations: members.filter(isRelation),
+      permissions: members.filter(isPermission),
+      partialReferences: members.filter(isPartialReference),
       range: { startIndex: startIndex, endIndex: endIndex },
     };
   },
@@ -714,21 +727,23 @@ const definition: Parser<ParsedObjectDefinition> = seqMap(
 
 // Partial Definitions.
 // NOTE: these are parsed the same as definitions.
+// TODO: see if this can be combined with objectDef in a sane way
 const partial: Parser<ParsedPartialDefinition> = seqMap(
   index,
   seq(
     lexeme(string("partial")),
     path,
-    lbrace.then(relationOrPermission.atLeast(0)).skip(rbrace),
+    lbrace.then(definitionMember.atLeast(0)).skip(rbrace),
   ),
   index,
   function (startIndex, data, endIndex) {
-    const rp = data[2];
+    const members = data[2];
     return {
       kind: "partial",
       name: data[1],
-      relations: rp.filter(isRelation),
-      permissions: rp.filter(isPermission),
+      relations: members.filter(isRelation),
+      permissions: members.filter(isPermission),
+      partialReferences: members.filter(isPartialReference),
       range: { startIndex: startIndex, endIndex: endIndex },
     };
   },

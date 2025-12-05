@@ -336,7 +336,7 @@ definition foo {}
 
       const definition = parsed?.definitions[0];
       assert(definition);
-      assert("relations" in definition);
+      assert(definition.kind === "objectDef");
       expect(definition.name).toEqual("foo");
       expect(definition.relations.length).toEqual(0);
       expect(definition.permissions.length).toEqual(1);
@@ -479,6 +479,20 @@ permission view = user
     assert(permission)
     expect(permission.name).toEqual("view")
     })
+    it("parses a basic partial reference", () => {
+    const schema = `definition thing {
+...some_partial
+}`
+    const parsed = parseSchema(schema)
+    expect(parsed?.definitions).toHaveLength(1)
+      const definition = parsed?.definitions[0];
+      assert(definition);
+    assert(definition.kind === "objectDef")
+      expect(definition.partialReferences).toHaveLength(1)
+      assert(definition.partialReferences[0])
+      expect(definition.partialReferences[0].name).toEqual("some_partial")
+    })
+    // TODO: more tests here
   })
 
   describe("full schemas", () => {

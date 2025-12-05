@@ -16,7 +16,7 @@ import { flatMapExpression } from "./dsl";
 /**
  * TypeRefResolution is the result of resolving a type reference.
  */
-export interface TypeRefResolution {
+export type TypeRefResolution = {
   /**
    * definition is the definition which is referred by this type reference.
    */
@@ -45,7 +45,7 @@ export type ExpressionResolution = ParsedRelation | ParsedPermission;
 /**
  * ResolvedTypeReference is a type reference found in the schema, with resolution attempted.
  */
-export interface ResolvedTypeReference {
+export type ResolvedTypeReference = {
   kind: "type";
   reference: TypeRef;
   referencedTypeAndRelation: TypeRefResolution | undefined;
@@ -54,7 +54,7 @@ export interface ResolvedTypeReference {
 /**
  * ResolvedExprReference is a relation reference expression found in the schema, with resolution attempted.
  */
-export interface ResolvedExprReference {
+export type ResolvedExprReference = {
   kind: "expression";
   reference: ParsedRelationRefExpression;
   resolvedRelationOrPermission: ExpressionResolution | undefined;

@@ -30,7 +30,7 @@ export type ParseResult = {
 /**
  * ParseError represents an error raised by the parser.
  */
-export interface ParseError {
+export type ParseError = {
   /**
    * message is the human-readable error message.
    */
@@ -148,7 +148,7 @@ export function flatMapExpression<T>(
  * ReferenceNode is the node returned by findReferenceNode, along with its parent definition,
  * if any.
  */
-export interface ReferenceNode {
+export type ReferenceNode = {
   node: ParsedRelationRefExpression | TypeRef | undefined;
   def: TopLevelDefinition;
 }
@@ -196,19 +196,19 @@ export function mapParsedSchema(
 // Parser node types
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export interface ParsedSchema {
+export type ParsedSchema = {
   kind: "schema";
   stringValue: string;
   definitions: Array<TopLevelDefinition>;
 }
 
-export interface ParsedUseFlag {
+export type ParsedUseFlag = {
   kind: "use";
   featureName: string;
   range: TextRange;
 }
 
-export interface ParsedCaveatDefinition {
+export type ParsedCaveatDefinition = {
   kind: "caveatDef";
   name: string;
   parameters: Array<ParsedCaveatParameter>;
@@ -216,26 +216,26 @@ export interface ParsedCaveatDefinition {
   range: TextRange;
 }
 
-export interface ParsedCaveatExpression {
+export type ParsedCaveatExpression = {
   kind: "caveatExpr";
   range: TextRange;
 }
 
-export interface ParsedCaveatParameter {
+export type ParsedCaveatParameter = {
   kind: "caveatParameter";
   name: string;
   type: ParsedCaveatParameterTypeRef;
   range: TextRange;
 }
 
-export interface ParsedCaveatParameterTypeRef {
+export type ParsedCaveatParameterTypeRef = {
   kind: "caveatParameterTypeExpr";
   name: string;
   generics: Array<ParsedCaveatParameterTypeRef>;
   range: TextRange;
 }
 
-export interface ParsedObjectDefinition {
+export type ParsedObjectDefinition = {
   kind: "objectDef";
   name: string;
   relations: Array<ParsedRelation>;
@@ -244,7 +244,7 @@ export interface ParsedObjectDefinition {
   range: TextRange;
 }
 
-export interface ParsedPartialDefinition {
+export type ParsedPartialDefinition = {
   kind: "partial";
   name: string;
   relations: Array<ParsedRelation>;
@@ -253,13 +253,13 @@ export interface ParsedPartialDefinition {
   range: TextRange;
 }
 
-interface PartialReference {
+type PartialReference = {
   kind: "partialreference";
   name: string;
   range: TextRange;
 }
 
-export interface ParsedRelation {
+export type ParsedRelation = {
   kind: "relation";
   name: string;
   allowedTypes: TypeExpr;
@@ -273,14 +273,14 @@ export type ParsedExpression =
   | ParsedNamedArrowExpression
   | ParsedNilExpression;
 
-export interface ParsedArrowExpression {
+export type ParsedArrowExpression = {
   kind: "arrow";
   sourceRelation: ParsedRelationRefExpression;
   targetRelationOrPermission: string;
   range: TextRange;
 }
 
-export interface ParsedNamedArrowExpression {
+export type ParsedNamedArrowExpression = {
   kind: "namedarrow";
   sourceRelation: ParsedRelationRefExpression;
   functionName: string;
@@ -288,19 +288,19 @@ export interface ParsedNamedArrowExpression {
   range: TextRange;
 }
 
-export interface ParsedRelationRefExpression {
+export type ParsedRelationRefExpression = {
   kind: "relationref";
   relationName: string;
   range: TextRange;
 }
 
-export interface ParsedNilExpression {
+export type ParsedNilExpression = {
   kind: "nil";
   isNil: true;
   range: TextRange;
 }
 
-export interface ParsedBinaryExpression {
+export type ParsedBinaryExpression = {
   kind: "binary";
   operator: "union" | "intersection" | "exclusion";
   left: ParsedExpression;
@@ -308,7 +308,7 @@ export interface ParsedBinaryExpression {
   range: TextRange;
 }
 
-export interface ParsedPermission {
+export type ParsedPermission = {
   kind: "permission";
   name: string;
   expr: ParsedExpression;
@@ -317,7 +317,7 @@ export interface ParsedPermission {
 
 export type DefinitionMember = ParsedRelation | ParsedPermission | PartialReference;
 
-export interface TypeRef {
+export type TypeRef = {
   kind: "typeref";
   path: string;
   relationName: string | undefined;
@@ -327,18 +327,18 @@ export interface TypeRef {
   range: TextRange;
 }
 
-export interface WithExpiration {
+export type WithExpiration = {
   kind: "withexpiration";
   range: TextRange;
 }
 
-export interface WithCaveat {
+export type WithCaveat = {
   kind: "withcaveat";
   path: string;
   range: TextRange;
 }
 
-export interface TypeExpr {
+export type TypeExpr = {
   kind: "typeexpr";
   types: Array<TypeRef>;
   range: TextRange;
@@ -359,13 +359,13 @@ export type ParsedNode =
   | TypeExpr
   | WithCaveat;
 
-export interface Index {
+export type Index = {
   offset: number;
   line: number;
   column: number;
 }
 
-export interface TextRange {
+export type TextRange = {
   startIndex: Index;
   endIndex: Index;
 }

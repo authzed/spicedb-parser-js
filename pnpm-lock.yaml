@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@types/parsimmon':
-        specifier: ^1.10.9
-        version: 1.10.9
       parsimmon:
         specifier: ^1.18.1
         version: 1.18.1
@@ -24,6 +21,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@types/parsimmon':
+        specifier: ^1.10.9
+        version: 1.10.9
       '@typescript-eslint/parser':
         specifier: ^8.48.1
         version: 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)

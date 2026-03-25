@@ -130,6 +130,11 @@ export function flatMapExpression<T>(
       return nilResult ? [nilResult] : [];
     }
 
+    case "self": {
+      const selfResult = walker(expr);
+      return selfResult ? [selfResult] : [];
+    }
+
     case "relationref": {
       const result = walker(expr);
       return result ? [result] : [];
@@ -280,7 +285,8 @@ export type ParsedExpression =
   | ParsedRelationRefExpression
   | ParsedArrowExpression
   | ParsedNamedArrowExpression
-  | ParsedNilExpression;
+  | ParsedNilExpression
+  | ParsedSelfExpression;
 
 export type ParsedArrowExpression = {
   kind: "arrow";
@@ -306,6 +312,11 @@ export type ParsedRelationRefExpression = {
 export type ParsedNilExpression = {
   kind: "nil";
   isNil: true;
+  range: TextRange;
+};
+
+export type ParsedSelfExpression = {
+  kind: "self";
   range: TextRange;
 };
 
@@ -582,6 +593,20 @@ const nilExpr: Parser<ParsedNilExpression> = lazy(() => {
   );
 });
 
+const selfExpr: Parser<ParsedSelfExpression> = lazy(() => {
+  return seqMap(
+    index,
+    string("self"),
+    index,
+    function (startIndex, _data, endIndex) {
+      return {
+        kind: "self",
+        range: { startIndex: startIndex, endIndex: endIndex },
+      };
+    },
+  );
+});
+
 const parensExpr = lazy(() =>
   string("(")
     .then(expr)
@@ -589,6 +614,7 @@ const parensExpr = lazy(() =>
     .or(arrowExpr)
     .or(namedArrowExpr)
     .or(nilExpr)
+    .or(selfExpr)
     .or(relationReference),
 );
 

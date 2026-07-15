@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSchema, stringLiteral } from "./dsl";
+import { findReferenceNode, parse, parseSchema, stringLiteral } from "./dsl";
 
 // Takes an expression as an argument and throws if that assertion fails.
 // This primarily exists to provide typescript narrowing in a statement,
@@ -492,6 +492,113 @@ definition user {}
       const secondExpr = second.expr;
       assert(secondExpr.kind === "relationref");
       expect(secondExpr.relationName).toEqual("secondrel");
+    });
+  });
+
+  describe("permission type annotations", () => {
+    it("parses a permission with a single type annotation", () => {
+      const schema = `definition foo {
+          permission view: user = viewer
+        }`;
+      const parsed = parseSchema(schema);
+
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+
+      const permission = definition.permissions[0];
+      assert(permission);
+      expect(permission.name).toEqual("view");
+
+      // The compute expression is still parsed normally.
+      assert(permission.expr.kind === "relationref");
+      expect(permission.expr.relationName).toEqual("viewer");
+
+      // The annotation is captured as a type expression.
+      assert(permission.annotatedTypes);
+      expect(permission.annotatedTypes.types.map((t) => t.path)).toEqual([
+        "user",
+      ]);
+      const annoType = permission.annotatedTypes.types[0];
+      assert(annoType);
+      expect(annoType.kind).toEqual("typeref");
+      expect(annoType.relationName).toBeUndefined();
+      expect(annoType.wildcard).toEqual(false);
+    });
+
+    it("parses a permission with multiple piped type annotations", () => {
+      const schema = `definition foo {
+          permission view: user | group | team = viewer
+        }`;
+      const parsed = parseSchema(schema);
+
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+
+      const permission = definition.permissions[0];
+      assert(permission);
+      assert(permission.annotatedTypes);
+      expect(permission.annotatedTypes.types.map((t) => t.path)).toEqual([
+        "user",
+        "group",
+        "team",
+      ]);
+    });
+
+    it("leaves annotatedTypes undefined when there is no annotation", () => {
+      const schema = `definition foo {
+          permission view = viewer
+        }`;
+      const parsed = parseSchema(schema);
+
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+
+      const permission = definition.permissions[0];
+      assert(permission);
+      expect(permission.annotatedTypes).toBeUndefined();
+    });
+
+    it("rejects a double colon", () => {
+      const schema = `definition foo {
+          permission view:: user = viewer
+        }`;
+      expect(parseSchema(schema)).toBeUndefined();
+    });
+
+    it("rejects a pipe with no preceding type", () => {
+      const schema = `definition foo {
+          permission view: | user = viewer
+        }`;
+      expect(parseSchema(schema)).toBeUndefined();
+    });
+
+    it("rejects a trailing pipe with no following type", () => {
+      const schema = `definition foo {
+          permission view: user | = viewer
+        }`;
+      expect(parseSchema(schema)).toBeUndefined();
+    });
+
+    it("finds the annotation type as a reference node for go-to-definition", () => {
+      const schema = `definition user {}
+definition foo {
+	permission view: user = viewer
+}`;
+      const result = parse(schema);
+      assert(!result.error);
+      assert(result.schema);
+
+      // "\tpermission view: user = viewer" is line 3 (1-indexed).
+      const line = "\tpermission view: user = viewer";
+      const col = line.indexOf("user") + 2; // 1-indexed, inside "user"
+      const found = findReferenceNode(result.schema, 3, col);
+      assert(found);
+      assert(found.node);
+      assert(found.node.kind === "typeref");
+      expect(found.node.path).toEqual("user");
     });
   });
 

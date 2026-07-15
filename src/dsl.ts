@@ -320,6 +320,12 @@ export type ParsedBinaryExpression = {
 export type ParsedPermission = {
   kind: "permission";
   name: string;
+  /**
+   * annotatedTypes is the optional `use typechecking` return-type annotation on the
+   * permission (e.g. `permission view: user | group = ...`), or undefined if none was
+   * written. Each annotated type is a plain type reference to a definition.
+   */
+  annotatedTypes: TypeExpr | undefined;
   expr: ParsedExpression;
   range: TextRange;
 };
@@ -636,12 +642,50 @@ const tableParser: Parser<ParsedExpression> = table.reduce(
 
 const expr = tableParser.trim(whitespace);
 
+// Permission type annotation (the `use typechecking` return-type annotation).
+// Unlike a relation's allowed types, an annotation is a pipe-separated list of plain
+// type identifiers -- no wildcards, subrelations, caveats, or expiration -- matching
+// the SpiceDB grammar `permission foo: user | group = ...`.
+const annotationTypeRef: Parser<TypeRef> = seqMap(
+  index,
+  identifier,
+  index,
+  function (startIndex, name, endIndex) {
+    return {
+      kind: "typeref",
+      path: name,
+      relationName: undefined,
+      wildcard: false,
+      withCaveat: undefined,
+      withExpiration: undefined,
+      range: { startIndex: startIndex, endIndex: endIndex },
+    };
+  },
+);
+
+const pipedAnnotationTypeRef = pipe.then(annotationTypeRef);
+
+const permissionTypeAnnotation: Parser<TypeExpr> = seqMap(
+  index,
+  seq(annotationTypeRef, pipedAnnotationTypeRef.atLeast(0)),
+  index,
+  function (startIndex, data, endIndex) {
+    const remaining = data[1];
+    return {
+      kind: "typeexpr",
+      types: [data[0], ...remaining],
+      range: { startIndex: startIndex, endIndex: endIndex },
+    };
+  },
+);
+
 // Definitions members.
 const permission: Parser<ParsedPermission> = seqMap(
   index,
   seq(
     lexeme(string("permission")),
     identifier,
+    colon.then(permissionTypeAnnotation).atMost(1),
     equal.then(expr).skip(terminator.atMost(1)),
   ),
   index,
@@ -649,7 +693,8 @@ const permission: Parser<ParsedPermission> = seqMap(
     return {
       kind: "permission",
       name: data[1],
-      expr: data[2],
+      annotatedTypes: data[2][0],
+      expr: data[3],
       range: { startIndex: startIndex, endIndex: endIndex },
     };
   },
@@ -918,6 +963,17 @@ function findReferenceNodeInPermission(
   lineNumber: number,
   columnPosition: number,
 ): ParsedRelationRefExpression | TypeRef | undefined {
+  // A `use typechecking` annotation type (e.g. the `user` in `permission view: user = ...`)
+  // is a type reference, so resolve it like a relation's allowed type for go-to-definition.
+  if (permission.annotatedTypes) {
+    const annotatedType = permission.annotatedTypes.types.find(
+      (typeRef: TypeRef) => rangeContains(typeRef, lineNumber, columnPosition),
+    );
+    if (annotatedType) {
+      return annotatedType;
+    }
+  }
+
   const found = flatMapExpression(permission.expr, (expr: ParsedExpression) => {
     if (!rangeContains(expr, lineNumber, columnPosition)) {
       return undefined;
@@ -989,6 +1045,9 @@ const mapParseNodes =
         break;
 
       case "permission":
+        if (node.annotatedTypes) {
+          mapParseNodes(mapper)(node.annotatedTypes);
+        }
         flatMapExpression(node.expr, mapper);
         break;
 

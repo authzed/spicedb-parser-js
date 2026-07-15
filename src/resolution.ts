@@ -205,15 +205,28 @@ export class Resolver {
         return [];
       }
 
-      return def.relations.flatMap((rel: ParsedRelation) => {
-        return rel.allowedTypes.types.map((typeRef: TypeRef) => {
-          return {
-            kind: "type",
-            reference: typeRef,
-            referencedTypeAndRelation: this.resolveTypeReference(typeRef),
-          };
-        });
-      });
+      const asTypeReference = (typeRef: TypeRef): ResolvedTypeReference => {
+        return {
+          kind: "type",
+          reference: typeRef,
+          referencedTypeAndRelation: this.resolveTypeReference(typeRef),
+        };
+      };
+
+      const relationRefs = def.relations.flatMap((rel: ParsedRelation) =>
+        rel.allowedTypes.types.map(asTypeReference),
+      );
+
+      // Permission `use typechecking` annotations reference types too, so resolve
+      // them alongside relation types for highlighting and hover.
+      const annotationRefs = def.permissions.flatMap(
+        (perm: ParsedPermission) =>
+          perm.annotatedTypes
+            ? perm.annotatedTypes.types.map(asTypeReference)
+            : [],
+      );
+
+      return [...relationRefs, ...annotationRefs];
     });
   }
 

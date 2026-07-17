@@ -9,6 +9,7 @@ export type {
   ParsedBinaryExpression,
   ParsedExpression,
   ParsedRelationRefExpression,
+  ParsedSelfExpression,
   TypeRef,
 } from "./dsl";
 export { ResolvedDefinition, Resolver } from "./resolution";

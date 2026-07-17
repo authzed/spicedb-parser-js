@@ -461,6 +461,85 @@ definition user {}
       expect(rightExpr.relationName).toEqual("d");
     });
 
+    it("parses definition with a self permission", () => {
+      const schema = `definition foo {
+          relation viewer: bar
+          permission view = viewer + self
+        }`;
+      const parsed = parseSchema(schema);
+
+      expect(parsed?.definitions.length).toEqual(1);
+
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+      expect(definition.permissions).toHaveLength(1);
+
+      const permission = definition.permissions[0];
+      assert(permission);
+      expect(permission.name).toEqual("view");
+
+      const binExpr = permission.expr;
+      assert(binExpr.kind === "binary");
+      expect(binExpr.operator).toEqual("union");
+
+      const leftExpr = binExpr.left;
+      assert(leftExpr.kind === "relationref");
+      expect(leftExpr.relationName).toEqual("viewer");
+
+      const rightExpr = binExpr.right;
+      assert(rightExpr.kind === "self");
+    });
+
+    it("parses definition with a standalone self permission", () => {
+      const schema = `definition foo {
+          permission view = self
+        }`;
+      const parsed = parseSchema(schema);
+
+      expect(parsed?.definitions.length).toEqual(1);
+
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+      expect(definition.permissions).toHaveLength(1);
+
+      const permission = definition.permissions[0];
+      assert(permission);
+      expect(permission.name).toEqual("view");
+
+      const selfExpr = permission.expr;
+      assert(selfExpr.kind === "self");
+    });
+
+    it("parses definition with self in a complex expression", () => {
+      const schema = `definition foo {
+          permission first = ((a - b) + self) & d;
+        }`;
+      const parsed = parseSchema(schema);
+
+      expect(parsed?.definitions.length).toEqual(1);
+
+      const definition = parsed?.definitions[0];
+      assert(definition);
+      assert(definition.kind === "objectDef");
+      expect(definition.permissions).toHaveLength(1);
+
+      const permission = definition.permissions[0];
+      assert(permission);
+
+      const binExpr = permission.expr;
+      assert(binExpr.kind === "binary");
+      expect(binExpr.operator).toEqual("intersection");
+
+      const leftExpr = binExpr.left;
+      assert(leftExpr.kind === "binary");
+      expect(leftExpr.operator).toEqual("union");
+
+      const rightLeftExpr = leftExpr.right;
+      assert(rightLeftExpr.kind === "self");
+    });
+
     it("parses definition with multiple permissions", () => {
       const schema = `definition foo {
           permission first = firstrel
